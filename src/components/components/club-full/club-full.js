@@ -3,7 +3,7 @@ import React from 'react';
 import { PlusCircle, X, Check, Feather } from 'react-feather';
 import ReactMarkdown from 'react-markdown';
 
-import { ApolloConsumer } from 'react-apollo';
+import { Mutation } from 'react-apollo';
 import TextInput from './../../forms/text-input/text-input';
 import { returnKeyCheck } from './../../../utils/accessibility';
 import clubCover from './../../../images/ClubCover.png';
@@ -147,6 +147,53 @@ export default class Club extends React.PureComponent {
     return true;
   }
 
+  EDIT_CLUB = gql`
+    mutation editClub(clubId: ID!, club: { email: "iro@test.gr"
+          location: { address: "foo", lng: "0", lat: "0" }
+          name: "Test"
+          imageUrl: "test"
+          bannerImageUrl: "test"
+          description: "test"
+          codeOfConduct: "test"
+          sortDescription: "test"
+          githubUrl: "test"
+          clubUrl: "test") {
+      editClub(
+        clubId: "1"
+        club: {
+          email: "iro@test.gr"
+          location: { address: "foo", lng: "0", lat: "0" }
+          name: "Test"
+          imageUrl: "test"
+          bannerImageUrl: "test"
+          description: "test"
+          codeOfConduct: "test"
+          sortDescription: "test"
+          githubUrl: "test"
+          clubUrl: "test"
+        }
+      ) {
+        clubId
+        club {
+          email
+          location {
+            address
+            lat
+            lng
+          }
+          name
+          imageUrl
+          bannerImageUrl
+          description
+          codeOfConduct
+          sortDescription
+          githubUrl
+          clubUrl
+        }
+      }
+    }
+  `;
+
   render() {
     const snapshot = { ...this.state };
 
@@ -225,34 +272,33 @@ export default class Club extends React.PureComponent {
       );
 
       buttonList.push(
-        <ApolloConsumer>
-          {client => (
+        <Mutation mutation={this.EDIT_CLUB}>
+          {(editClub, { data }) => (
             <div
               tabIndex={0}
               role="button"
-              onClick={() => {
-                client.mutate({
+              onClick={e => {
+                e.preventDefault();
+                editClub({
                   variables: {
-                    id: snapshot.id,
+                    clubId: snapshot.id,
                     club: {
-                      name: snapshot.title,
-                      sortDescription: snapshot.subtitle,
-                      imageUrl: snapshot.imageUrl,
-                      bannerImageUrl: snapshot.bannerImageUrl,
-                      description: snapshot.description,
-                      codeOfConduct: snapshot.codeOfConduct,
                       email: snapshot.email,
-                      githubUrl: 'https://github.com/github', //snapshot.githubUrl,
-                      clubUrl: 'https://github.com/github', //snapshot.clubUrl,
                       location: {
                         address: snapshot.location.address,
                         lng: snapshot.location.lng,
                         lat: snapshot.location.lat
-                      }
+                      },
+                      name: snapshot.title,
+                      imageUrl: snapshot.imageUrl,
+                      bannerImageUrl: snapshot.bannerImageUrl,
+                      description: snapshot.description,
+                      codeOfConduct: snapshot.codeOfConduct,
+                      sortDescription: snapshot.subtitle,
+                      githubUrl: 'https://github.com/github', //snapshot.githubUrl,
+                      clubUrl: 'https://github.com/github' //snapshot.clubUrl,
                     }
-                  },
-                  mutation: editClub,
-                  fetchPolicy: 'no-cache'
+                  }
                 });
               }}
               onKeyDown={e => {
@@ -265,7 +311,7 @@ export default class Club extends React.PureComponent {
               <span> Save changes </span>
             </div>
           )}
-        </ApolloConsumer>
+        </Mutation>
       );
     } else if (snapshot.editable) {
       buttonList.push(
@@ -337,39 +383,3 @@ export default class Club extends React.PureComponent {
     );
   }
 }
-
-const editClub = gql`
-  mutation {
-    editClub(
-      clubId: $id
-      club: {
-        name: $name
-        sortDescription: $sortDescription
-        imageUrl: $imageUrl
-        bannerImageUrl: $bannerImageUrl
-        description: $description
-        codeOfConduct: $codeOfConduct
-        email: $email
-        githubUrl: $githubUrl
-        clubUrl: $clubUrl
-        location: { address: $address, lng: $lng, lat: $lat }
-      }
-    ) {
-      id
-      email
-      location {
-        address
-        lat
-        lng
-      }
-      name
-      imageUrl
-      bannerImageUrl
-      description
-      codeOfConduct
-      sortDescription
-      githubUrl
-      clubUrl
-    }
-  }
-`;
