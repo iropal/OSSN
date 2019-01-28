@@ -265,13 +265,13 @@ class Member extends React.PureComponent {
       <TextInput
         label="personal web page"
         onChange={this.handlePersonal}
-        value={snapshot.personal}
+        value={snapshot.personalUrl}
       />
     ) : (
       snapshot.personal && (
         <a href="#passLinter">
           <Link className="member__icon" />
-          <span className="member__link-content">{snapshot.personal}</span>
+          <span className="member__link-content">{snapshot.personalUrl}</span>
         </a>
       )
     );
@@ -406,7 +406,7 @@ class Member extends React.PureComponent {
             </div>
           </ShadowBox>
 
-          <div className="member__button-list">{buttonList}</div>
+          <div className="member__button-list"> {buttonList}</div>
         </div>
       </LayoutContained>
     );
@@ -415,8 +415,16 @@ class Member extends React.PureComponent {
 
 export default Member;
 
+// TODO: ask alex to add the id at the edit_user model.
+// NOTE: The ID is a btoa() transform of the number.
+//       The id could be saved at the redux store to avoid transformation.
 const editUser = gql`
-  mutation {
+  mutation EDIT_USER(
+    $id: ID!
+    $receiveNewsletter: Boolean
+    $sortDescription: String
+    $clubs: [ID]
+  ) {
     editUser(
       user: {
         id: $id
