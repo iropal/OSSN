@@ -11,7 +11,7 @@ export default class ClubFullPage extends React.Component {
   render() {
     return (
       <BasicLayout>
-        <Member member={this.props.pageContext.member} />
+        <Member member={this.props.pageContext.member} editable />
       </BasicLayout>
     );
   }
