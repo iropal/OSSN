@@ -1,18 +1,65 @@
 import './member.scss';
 
-import gql from 'graphql-tag';
+import { navigate } from 'gatsby';
 import React from 'react';
-import { ApolloConsumer } from 'react-apollo';
-import { Helmet } from 'react-helmet';
-
-import GatsbyConfig from './../../../../gatsby-config';
-import { returnKeyCheck } from './../../../utils/accessibility';
-import TextInput from './../../forms/text-input/text-input';
+import { ApolloConsumer, withApollo } from 'react-apollo';
 import { Check, Feather, GitHub, Link, Users, X } from 'react-feather';
+import { Helmet } from 'react-helmet';
+import { connect } from 'react-redux';
 import MediaQuery from 'react-responsive';
-import LayoutContained from './../../layouts/layout-contained/layout-contained';
-import ShadowBox from './../shadow-box/shadow-box';
-import Shape from './../shape/shape';
+
+import GatsbyConfig from '../../../../gatsby-config';
+import { returnKeyCheck } from '../../../utils/accessibility';
+import { mapUserToProps } from '../../../utils/redux-utils';
+import TextInput from '../../forms/text-input/text-input';
+import LayoutContained from '../../layouts/layout-contained/layout-contained';
+import ShadowBox from '../shadow-box/shadow-box';
+import Shape from '../shape/shape';
+import { editUserMutation, getUserQuery } from './member-queries';
+
+const shapesUnordered = [
+  <Shape
+    seafoamBlue
+    square
+    className="member__shape member__shape--square"
+    key="square"
+  />,
+  <Shape
+    sunnyYellow
+    triangle
+    className="member__shape member__shape--triangle"
+    key="triangle"
+  />,
+  <Shape
+    darkSkyBlue
+    circle
+    className="member__shape member__shape--circle"
+    key="circle"
+  />
+];
+
+// Shuffles shapes to print them randomly in different areas.
+// Uses Fisher-Yates (aka Knuth) Shuffle algorithm.
+// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+const shuffle = array => {
+  let currentIndex = array.length,
+    temporaryValue,
+    randomIndex;
+
+  // While there remain elements to shuffle.
+  while (0 !== currentIndex) {
+    // Pick a remaining element.
+    randomIndex = Math.floor(Math.random() * currentIndex);
+    currentIndex -= 1;
+
+    // And swap it with the current element.
+    temporaryValue = array[currentIndex];
+    array[currentIndex] = array[randomIndex];
+    array[randomIndex] = temporaryValue;
+  }
+
+  return array;
+};
 
 /*
  Profile page template.
@@ -39,204 +86,111 @@ class Member extends React.PureComponent {
     const initData = {
       name: this.props.member.name,
       imageUrl: this.props.member.imageUrl,
-      location: this.props.member.sortDescription,
-      club: this.props.member.clubs,
-      github: this.props.member.githubUrl,
-      personal: this.props.member.personalUrl,
+      sortDescription: this.props.member.sortDescription,
+      clubs: this.props.member.clubs,
+      githubUrl: this.props.member.githubUrl,
+      personalUrl: this.props.member.personalUrl,
       description: this.props.member.description,
       receiveNewsletter: this.props.member.receiveNewsletter,
       clubsToPreserve: this.props.member.clubs.map(club => club.id),
-      shapes: [],
+      shapes: shuffle(shapesUnordered),
       firstLoad: true
     };
 
     this.state = {
       ...initData,
       edit: false,
-      editable: false,
+      editable: !!this.isCurrentUser(),
       history: {
         ...initData
       }
     };
   }
 
-  // Replace the state with a the value of the `state.history`.
-  // can be called from the `cancel` button.
-  reverse({
-    name,
-    imageUrl,
-    location,
-    club,
-    github,
-    personal,
-    description,
-    receiveNewsletter,
-    clubsToPreserve
-  }) {
-    const oldState = {
-      name,
-      imageUrl,
-      location,
-      club,
-      github,
-      personal,
-      description,
-      receiveNewsletter,
-      clubsToPreserve,
-      edit: false
-    };
-
-    this.setState(oldState);
-  }
-
-  // saves the current state as the state.history field.
-  // The history is reversed if the user pushes cancel.
-  saveToHistoryAndEdit({
-    name,
-    imageUrl,
-    location,
-    club,
-    github,
-    personal,
-    description,
-    receiveNewsletter,
-    clubsToPreserve
-  }) {
-    const newHistory = {
-      name,
-      imageUrl,
-      location,
-      club,
-      github,
-      personal,
-      description,
-      receiveNewsletter,
-      clubsToPreserve
-    };
-
-    this.setState({ history: newHistory, edit: true });
-  }
-
-  handleName = event => {
-    this.setState({ name: event.target.value });
-  };
-
-  handleLocation = event => {
-    this.setState({ location: event.target.value });
-  };
-
-  handleGithub = event => {
-    this.setState({ github: event.target.value });
-  };
-
-  handlePersonal = event => {
-    this.setState({ personal: event.target.value });
-  };
-
-  handleDescription = event => {
-    this.setState({ description: event.target.value });
-  };
-
-  handleClubSubscription = (clubId, event) => {
-    if (event.target.checked) {
-      // Add club id to array.
-      this.setState({
-        clubsToPreserve: this.state.clubsToPreserve.concat([clubId])
-      });
-    } else {
-      // Remove club id to array.
-      this.setState({
-        clubsToPreserve: this.state.clubsToPreserve.filter(function(club) {
-          return club !== clubId;
-        })
-      });
+  componentDidMount = () => {
+    let { id } = this.props.member;
+    if (!id) {
+      let path = this.props.location.pathname.split('/');
+      id = path[path.indexOf('members') + 1].split('?')[0];
     }
+    this.props.client
+      .query({
+        query: getUserQuery,
+        variables: { id }
+      })
+      .then(({ data = {} }) => {
+        if (data.user) {
+          const grapgData = {
+            ...data.user,
+            clubsToPreserve: data.user.clubs.map(club => club.id)
+          };
+          return this.setState({
+            ...grapgData,
+            history: {
+              ...grapgData
+            }
+          });
+        }
+      })
+      .catch(e => {
+        //TODO: Handle error
+        if (e.toString() == 'Error: GraphQL error: record not found') {
+          navigate('/404');
+        }
+      });
   };
 
-  handleNewsletterSubscription = event => {
-    this.setState({ receiveNewsletter: event.target.checked });
+  componentDidUpdate(prevProps) {
+    if (
+      (prevProps.user || {}).user &&
+      prevProps.user.user.id != this.props.user.user.id
+    ) {
+      this.setState({ editable: !!this.isCurrentUser() });
+    }
+  }
+
+  isCurrentUser = () =>
+    this.props.user.user && this.props.member.id === this.props.user.user.id;
+
+  handleChange = ({ target }) => {
+    this.setState({
+      [target.name]: target.type === 'checkbox' ? target.checked : target.value
+    });
+  };
+
+  handleClubSubscription = ({ target: { checked, name: clubId } }) => {
+    this.setState(({ clubsToPreserve }) => ({
+      clubsToPreserve: checked
+        ? // Add club id to array
+          clubsToPreserve.concat([clubId])
+        : // Remove club id from array
+          clubsToPreserve.filter(club => club !== clubId)
+    }));
   };
 
   handleEdit = () => {
-    const snapshot = { ...this.state };
-    this.saveToHistoryAndEdit(snapshot);
+    this.setState(state => ({ history: { ...state }, edit: true }));
   };
 
   handleCancel = () => {
-    const history = { ...this.state.history };
-    this.reverse(history);
+    this.setState(state => ({ ...state.history, edit: false }));
   };
 
   handleSave = () => {
-    // Remove clubs.
-    let preservedClubs = this.state.clubsToPreserve;
-
-    this.setState({
-      club: this.state.club.filter(function(club) {
-        return preservedClubs.indexOf(club.id) > -1;
-      })
-    });
-    this.setState({ edit: false });
+    this.setState(({ clubsToPreserve, clubs }) => ({
+      clubs: clubs.filter(club => clubsToPreserve.includes(club.id)),
+      edit: false
+    }));
   };
-
-  // Shuffles shapes to print them randomly in different areas.
-  // Uses Fisher-Yates (aka Knuth) Shuffle algorithm.
-  // https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
-  shuffle = array => {
-    let currentIndex = array.length,
-      temporaryValue,
-      randomIndex;
-
-    // While there remain elements to shuffle.
-    while (0 !== currentIndex) {
-      // Pick a remaining element.
-      randomIndex = Math.floor(Math.random() * currentIndex);
-      currentIndex -= 1;
-
-      // And swap it with the current element.
-      temporaryValue = array[currentIndex];
-      array[currentIndex] = array[randomIndex];
-      array[randomIndex] = temporaryValue;
-    }
-
-    return array;
-  };
-
-  orderShapes = () => {
-    const shapesUnordered = [
-      <Shape
-        seafoamBlue
-        square
-        className="member__shape member__shape--square"
-        key="square"
-      />,
-      <Shape
-        sunnyYellow
-        triangle
-        className="member__shape member__shape--triangle"
-        key="triangle"
-      />,
-      <Shape
-        darkSkyBlue
-        circle
-        className="member__shape member__shape--circle"
-        key="circle"
-      />
-    ];
-    this.setState({ shapes: this.shuffle(shapesUnordered) });
-  };
-
-  UNSAFE_componentWillMount() {
-    this.orderShapes();
-  }
 
   render() {
-    const snapshot = { ...this.state };
+    const snapshot = this.state;
 
     const name = snapshot.edit ? (
       <TextInput
         label="Name"
-        onChange={this.handleName}
+        name="name"
+        onChange={this.handleChange}
         value={snapshot.name}
         className="member__text-field form-input--member form-input--member-name"
         placeholder="name"
@@ -245,22 +199,24 @@ class Member extends React.PureComponent {
       <div> {snapshot.name} </div>
     );
 
-    const location = snapshot.edit ? (
+    const sortDescription = snapshot.edit ? (
       <TextInput
-        label="Location"
-        onChange={this.handleLocation}
-        value={snapshot.location}
+        label="Sort Description"
+        name="sortDescription"
+        onChange={this.handleChange}
+        value={snapshot.sortDescription}
         className="member__text-field form-input--member form-input--member-name"
       />
     ) : (
-      snapshot.location && <div> {snapshot.location} </div>
+      snapshot.sortDescription && <div> {snapshot.sortDescription} </div>
     );
 
     const description = snapshot.edit ? (
       <TextInput
         multiline
         label="Description"
-        onChange={this.handleDescription}
+        name="description"
+        onChange={this.handleChange}
         value={snapshot.description}
       />
     ) : (
@@ -269,22 +225,20 @@ class Member extends React.PureComponent {
 
     const club = snapshot.edit ? (
       <div>
-        {snapshot.club.length > 0 && <h2>Uncheck to unsubscribe from club</h2>}
+        {snapshot.clubs.length > 0 && <h2>Uncheck to unsubscribe from club</h2>}
 
-        {snapshot.club.length > 0 &&
-          snapshot.club.map((club, i) => {
+        {snapshot.clubs.length > 0 &&
+          snapshot.clubs.map((club, i) => {
             // return <Organization organization={node.org} key={i} />
             return (
-              <div className="member__checkbox" key={i}>
+              <div className="member__checkbox" key={club.id}>
                 <label htmlFor={'club-' + club.id}>
                   <input
-                    name={club.name}
+                    name={club.id}
                     type="checkbox"
                     defaultChecked
                     id={'club-' + club.id}
-                    onChange={event =>
-                      this.handleClubSubscription(club.id, event)
-                    }
+                    onChange={this.handleClubSubscription}
                   />
                   {club.name}
                 </label>
@@ -293,10 +247,10 @@ class Member extends React.PureComponent {
           })}
       </div>
     ) : (
-      snapshot.club.length > 0 && (
+      snapshot.clubs.length > 0 && (
         <div>
           <Users className="member__icon" />
-          {snapshot.club
+          {snapshot.clubs
             .map(club => club.name || 'Club name missing')
             .join(', ')}
         </div>
@@ -310,11 +264,11 @@ class Member extends React.PureComponent {
         <div className="member__checkbox">
           <label htmlFor="newsletter">
             <input
-              name="newsletter_subscription"
+              name="receiveNewsletter"
               type="checkbox"
               id="newsletter"
               defaultChecked={snapshot.receiveNewsletter}
-              onChange={this.handleNewsletterSubscription}
+              onChange={this.handleChange}
             />
             I want to receive newsletter
           </label>
@@ -325,31 +279,37 @@ class Member extends React.PureComponent {
     const github = snapshot.edit ? (
       <TextInput
         label="Github Url"
-        onChange={this.handleGithub}
-        value={snapshot.github}
+        name="githubUrl"
+        onChange={this.handleChange}
+        value={snapshot.githubUrl}
         className="member__text-field form-input--member form-input--member-name"
       />
     ) : (
-      snapshot.github && (
-        <a href={snapshot.github}>
+      snapshot.githubUrl && (
+        <a href={snapshot.githubUrl} target="_blank" rel="noopener noreferrer">
           <GitHub className="member__icon" />
-          <span className="member__link-content">{snapshot.github}</span>
+          <span className="member__link-content">{snapshot.githubUrl}</span>
         </a>
       )
     );
 
-    const personal = snapshot.edit ? (
+    const personalUrl = snapshot.edit ? (
       <TextInput
         label="personal web page"
-        onChange={this.handlePersonal}
-        value={snapshot.personal}
+        name="personalUrl"
+        onChange={this.handleChange}
+        value={snapshot.personalUrl}
         className="member__text-field form-input--member form-input--member-name"
       />
     ) : (
-      snapshot.personal && (
-        <a href="#passLinter">
+      snapshot.personalUrl && (
+        <a
+          href={snapshot.personalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <Link className="member__icon" />
-          <span className="member__link-content">{snapshot.personal}</span>
+          <span className="member__link-content">{snapshot.personalUrl}</span>
         </a>
       )
     );
@@ -374,7 +334,7 @@ class Member extends React.PureComponent {
       );
 
       buttonList.push(
-        <ApolloConsumer>
+        <ApolloConsumer key="appollo-consumer">
           {client => (
             <div
               tabIndex={0}
@@ -383,13 +343,13 @@ class Member extends React.PureComponent {
                 client.mutate({
                   variables: {
                     receiveNewsletter: snapshot.receiveNewsletter,
-                    sortDescription: snapshot.location,
+                    sortDescription: snapshot.sortDescription,
                     clubs: snapshot.clubsToPreserve,
                     description: snapshot.description,
-                    githubUrl: snapshot.github,
-                    personalUrl: snapshot.personal
+                    githubUrl: snapshot.githubUrl,
+                    personalUrl: snapshot.personalUrl
                   },
-                  mutation: editUser
+                  mutation: editUserMutation
                 });
 
                 this.handleSave();
@@ -399,13 +359,13 @@ class Member extends React.PureComponent {
                   client.mutate({
                     variables: {
                       receiveNewsletter: snapshot.receiveNewsletter,
-                      sortDescription: snapshot.location,
+                      sortDescription: snapshot.sortDescription,
                       clubs: snapshot.clubsToPreserve,
                       description: snapshot.description,
-                      githubUrl: snapshot.github,
-                      personalUrl: snapshot.personal
+                      githubUrl: snapshot.githubUrl,
+                      personalUrl: snapshot.personalUrl
                     },
-                    mutation: editUser
+                    mutation: editUserMutation
                   });
 
                   this.handleSave();
@@ -472,7 +432,7 @@ class Member extends React.PureComponent {
               </div>
               <div className="title title--small member__name">{name}</div>
 
-              <div className="member__location">{location}</div>
+              <div className="member__location">{sortDescription}</div>
 
               <div className="member__description">{description}</div>
 
@@ -483,7 +443,7 @@ class Member extends React.PureComponent {
                 className="member__divider"
               />
 
-              {snapshot.club.length > 0 && (
+              {snapshot.clubs.length > 0 && (
                 <div>
                   <div className="member__club">{club}</div>
 
@@ -499,7 +459,7 @@ class Member extends React.PureComponent {
               <div className="member__link member__link--github">{github}</div>
 
               <div className="member__link member__link--personal-page">
-                {personal}
+                {personalUrl}
               </div>
 
               {newsletter}
@@ -513,37 +473,4 @@ class Member extends React.PureComponent {
   }
 }
 
-export default Member;
-
-const editUser = gql`
-  mutation editUser(
-    $receiveNewsletter: Boolean!
-    $sortDescription: String
-    $description: String
-    $clubs: [ID!]
-    $githubUrl: String
-    $personalUrl: String
-  ) {
-    editUser(
-      user: {
-        receiveNewsletter: $receiveNewsletter
-        sortDescription: $sortDescription
-        description: $description
-        clubs: $clubs
-        githubUrl: $githubUrl
-        personalUrl: $personalUrl
-      }
-    ) {
-      id
-      email
-      sortDescription
-      description
-      receiveNewsletter
-      clubs {
-        id
-      }
-      githubUrl
-      personalUrl
-    }
-  }
-`;
+export default connect(mapUserToProps)(withApollo(Member));
